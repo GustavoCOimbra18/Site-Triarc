@@ -1,0 +1,7 @@
+{
+  "name": "TRIARC Store",
+  "description": "Landing Page ultra-otimizada de roupas premium e alta performance fitness em Santo Anastácio & Presidente Prudente - SP. Integração total com WhatsApp.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-serif: "Space Grotesk", "Georgia", serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+/* Base style tweaks for high-end feel */
+html, body {
+  scroll-behavior: smooth;
+  background-color: #070707;
+}
+
+/* Custom golden scrollbar design */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0d0d0d;
+}
+::-webkit-scrollbar-thumb {
+  background: #2c2512;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #d97706;
+}

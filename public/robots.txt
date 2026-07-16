@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /checkout-success
+
+Sitemap: https://triarcstore.com.br/sitemap.xml

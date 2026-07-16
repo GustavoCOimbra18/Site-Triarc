@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TRIARC Store | Roupas Premium Fitness, Treino &amp; Lifestyle em Presidente Prudente - SP</title>
+    
+    <!-- PWA Web App Meta Tags & Manifest -->
+    <meta name="theme-color" content="#070707" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="TRIARC Store" />
+    
+    <!-- PWA Icons -->
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <link rel="manifest" href="/manifest.json" />
+
+
+    <!-- Service Worker Registration -->
+    <script>
+      try {
+        if ('serviceWorker' in navigator) {
+          // Avoid registering the service worker on localhost or dev preview domains to prevent sandbox/caching issues
+          const isDevPreview = window.location.hostname.includes('localhost') || 
+                               window.location.hostname.includes('127.0.0.1') || 
+                               window.location.hostname.includes('run.app') || 
+                               window.location.hostname.includes('aistudio');
+          
+          if (!isDevPreview) {
+            window.addEventListener('load', () => {
+              try {
+                navigator.serviceWorker.register('/sw.js')
+                  .then((reg) => console.log('TRIARC PWA Service Worker registrado com sucesso:', reg.scope))
+                  .catch((err) => console.warn('Erro ao registrar Service Worker:', err));
+              } catch (innerErr) {
+                console.warn('Falha ao tentar registrar sw:', innerErr);
+              }
+            });
+          } else {
+            console.log('TRIARC PWA Service Worker skipped in dev/preview environment.');
+            // Unregister any active Service Workers on dev/preview to prevent aggressive caching of old blank pages
+            navigator.serviceWorker.getRegistrations().then(async (registrations) => {
+              let unregisteredAny = false;
+              for (const registration of registrations) {
+                const success = await registration.unregister();
+                if (success) {
+                  console.log('Unregistered stale service worker in dev preview.');
+                  unregisteredAny = true;
+                }
+              }
+              if (unregisteredAny && 'caches' in window) {
+                const keys = await caches.keys();
+                await Promise.all(keys.map(key => caches.delete(key)));
+                console.log('Caches cleared for dev preview. Reloading...');
+                window.location.reload();
+              }
+            }).catch(err => console.warn('Error fetching service worker registrations:', err));
+          }
+        }
+      } catch (err) {
+        console.warn('Erro geral de Service Worker:', err);
+      }
+    </script>
+    <meta name="description" content="Descubra a TRIARC Store em Presidente Prudente - SP. Roupas esportivas premium masculinas e femininas de alta performance. Camisetas de compressão tecnológica com secagem rápida e modelagem minimalista sofisticada em Presidente Prudente. Compre no WhatsApp!" />
+    <meta name="keywords" content="roupas fitness Presidente Prudente, loja de roupas Presidente Prudente, camiseta premium masculina Presidente Prudente, camiseta de compressão treino Presidente Prudente, moda esportiva premium Presidente Prudente, estilo de vida alto rendimento Presidente Prudente, vestuário de academia Presidente Prudente, TRIARC Store Presidente Prudente" />
+    <link rel="canonical" href="https://triarcstore.com.br/" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://triarcstore.com.br/" />
+    <meta property="og:title" content="TRIARC Store | Moda Fitness &amp; Lifestyle Premium Presidente Prudente" />
+    <meta property="og:description" content="Modelagem minimalista de alta respirabilidade e tecidos tecnológicos de alta tensão para vestuário esportivo em Presidente Prudente - SP." />
+    <meta property="og:image" content="https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=1200&h=630&auto=format&fit=crop&q=80" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://triarcstore.com.br/" />
+    <meta property="twitter:title" content="TRIARC Store | Roupas Premium de Performance" />
+    <meta property="twitter:description" content="Tecnologia têxtil dry-regulator e tecidos de alta compressão. Faça o seu pedido via WhatsApp." />
+    <meta property="twitter:image" content="https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=1200&h=630&auto=format&fit=crop&q=80" />
+
+    <!-- Google Font Pairings -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+    <!-- Schema.org JSON-LD Structuring -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "LocalBusiness",
+      "name": "TRIARC Store",
+      "image": "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=800&auto=format&fit=crop&q=80",
+      "telephone": "+5518997034546",
+      "email": "triarcstore1@gmail.com",
+      "url": "https://triarcstore.com.br",
+      "priceRange": "$$",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Virtual Store based in Presidente Prudente",
+        "addressLocality": "Presidente Prudente",
+        "addressRegion": "SP",
+        "postalCode": "19000-000",
+        "addressCountry": "BR"
+      },
+      "geo": {
+        "@type": "GeoCoordinates",
+        "latitude": "-22.1225",
+        "longitude": "-51.3856"
+      },
+      "areaServed": [
+        {
+          "@type": "AdministrativeArea",
+          "name": "Presidente Prudente"
+        }
+      ],
+      "openingHoursSpecification": {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": [
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday",
+          "Saturday"
+        ],
+        "opens": "08:00",
+        "closes": "20:00"
+      },
+      "sameAs": [
+        "https://instagram.com/triarc.store"
+      ]
+    }
+    </script>
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "A TRIARC Store possui loja física em Presidente Prudente?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Não possuímos loja física em Presidente Prudente. Operamos de forma 100% online como e-commerce e mostruário digital de alta performance, entregando roupas premium no conforto de sua casa com frete grátis ou entrega rápida especial na região."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Como funciona o envio e entrega para Presidente Prudente?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Realizamos entregas rápidas via portadores dedicados para Presidente Prudente - SP. Para outras regiões do Brasil, oferecemos envio expresso via Correios (SEDEX)."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Como são os tecidos das camisetas de compressão da TRIARC?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Nossas peças usam tecidos tecnológicos compostos por poliamida de alta densidade e elastano DuPont termo-regulador. Oferecem secagem ultra rápida (Dry-Shield), proteção UV50+ e alta respirabilidade para manter a temperatura corporal regulada em treinos extremos."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Como faço para comprar na TRIARC Store?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "É extremamente fácil. Navegue pelo nosso mostruário, selecione suas peças, tamanhos e cores preferidas e clique em 'Garantir via WhatsApp'. Uma mensagem formatada será gerada com os detalhes de seu pedido direto para o nosso atendimento, onde combinamos o pagamento (Pix ou cartão) e frete."
+          }
+        }
+      ]
+    }
+    </script>
+  </head>
+  <body class="bg-[#070707] text-stone-100 antialiased">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

@@ -1,0 +1,86 @@
+<svg width="512" height="512" viewBox="0 0 500 500" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    {/* Polished Gold Gradients for Metallic Effect */}
+    <linearGradient id="gold-primary" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stopColor="#78350f" />
+      <stop offset="25%" stopColor="#d97706" />
+      <stop offset="50%" stopColor="#fef08a" />
+      <stop offset="75%" stopColor="#ca8a04" />
+      <stop offset="100%" stopColor="#fef08a" />
+    </linearGradient>
+
+    <linearGradient id="gold-metal-light" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stopColor="#fef08a" />
+      <stop offset="35%" stopColor="#eab308" />
+      <stop offset="70%" stopColor="#b45309" />
+      <stop offset="100%" stopColor="#fef08a" />
+    </linearGradient>
+
+    <linearGradient id="gold-dark-accent" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stopColor="#ca8a04" />
+      <stop offset="50%" stopColor="#451a03" />
+      <stop offset="100%" stopColor="#0c0a09" />
+    </linearGradient>
+
+    {/* Precise Facet Clip Paths to ensure seamless joints */}
+    <clipPath id="clip-left-facet">
+      <polygon points="250,15 250,165 150,320 15,400" />
+    </clipPath>
+    <clipPath id="clip-right-facet">
+      <polygon points="250,15 485,400 350,320 250,165" />
+    </clipPath>
+    <clipPath id="clip-bottom-facet">
+      <polygon points="15,400 150,320 350,320 485,400" />
+    </clipPath>
+  </defs>
+
+  {/* Ambient glowing background aura */}
+  <circle cx="250" cy="250" r="230" fill="black" />
+  <circle cx="250" cy="250" r="180" fill="#eab308" opacity="0.03" />
+
+  {/* Centered Group translating elements vertically to center perfectly */}
+  <g transform="translate(0, 48)">
+    {/* Background Base Plate */}
+    <polygon points="250,15 485,400 15,400" fill="#000000" />
+
+    {/* 1. Left Facet: Fine, dense diagonal hatching lines */}
+    <g clipPath="url(#clip-left-facet)">
+      <path d="M 0,-150 L 500,350 M -15,-150 L 485,350 M 15,-150 L 515,350 M -30,-150 L 470,350 M 30,-150 L 530,350 M -45,-150 L 455,350 M 45,-150 L 545,350 M -60,-150 L 440,350 M 60,-150 L 560,350 M -75,-150 L 425,350 M 75,-150 L 575,350 M -90,-150 L 410,350 M 90,-150 L 590,350 M -105,-150 L 395,350 M 105,-150 L 605,350 M -120,-150 L 380,350 M 120,-150 L 620,350 M -135,-150 L 365,350 M 135,-150 L 635,350 M -150,-150 L 350,350 M 150,-150 L 650,350 M -165,-150 L 335,350 M 165,-150 L 665,350 M -180,-150 L 320,350 M 180,-150 L 680,350 M -195,-150 L 305,350 M 195,-150 L 695,350 M -210,-150 L 290,350 M 210,-150 L 705,350 M -225,-150 L 275,350 M 225,-150 L 725,350 M -240,-150 L 260,350 M 240,-150 L 740,350" stroke="url(#gold-primary)" strokeWidth="3" strokeLinecap="round" />
+    </g>
+
+    {/* 2. Right Facet: Bold parallel longitudinal slats */}
+    <g clipPath="url(#clip-right-facet)">
+      <line x1="100" y1="15" x2="335" y2="400" stroke="url(#gold-metal-light)" strokeWidth="11" />
+      <line x1="126" y1="15" x2="361" y2="400" stroke="url(#gold-metal-light)" strokeWidth="11" />
+      <line x1="152" y1="15" x2="387" y2="400" stroke="url(#gold-metal-light)" strokeWidth="11" />
+      <line x1="178" y1="15" x2="413" y2="400" stroke="url(#gold-metal-light)" strokeWidth="11" />
+      <line x1="204" y1="15" x2="439" y2="400" stroke="url(#gold-metal-light)" strokeWidth="11" />
+      <line x1="230" y1="15" x2="465" y2="400" stroke="url(#gold-metal-light)" strokeWidth="11" />
+      <line x1="256" y1="15" x2="491" y2="400" stroke="url(#gold-metal-light)" strokeWidth="11" />
+      <line x1="282" y1="15" x2="517" y2="400" stroke="url(#gold-metal-light)" strokeWidth="11" />
+      <line x1="308" y1="15" x2="543" y2="400" stroke="url(#gold-metal-light)" strokeWidth="11" />
+    </g>
+
+    {/* 3. Bottom Facet: Parallel horizontal slats */}
+    <g clipPath="url(#clip-bottom-facet)">
+      <line x1="0" y1="400" x2="500" y2="400" stroke="url(#gold-primary)" strokeWidth="8" />
+      <line x1="0" y1="386" x2="500" y2="386" stroke="url(#gold-primary)" strokeWidth="8" />
+      <line x1="0" y1="372" x2="500" y2="372" stroke="url(#gold-primary)" strokeWidth="8" />
+      <line x1="0" y1="358" x2="500" y2="358" stroke="url(#gold-primary)" strokeWidth="8" />
+      <line x1="0" y1="344" x2="500" y2="344" stroke="url(#gold-primary)" strokeWidth="8" />
+      <line x1="0" y1="330" x2="500" y2="330" stroke="url(#gold-primary)" strokeWidth="8" />
+    </g>
+
+    {/* 4. Outer Solid Gold Border */}
+    <polygon points="250,15 485,400 15,400" stroke="url(#gold-primary)" strokeWidth="10" strokeLinejoin="round" fill="none" />
+
+    {/* 5. Inner Separation Ring */}
+    <polygon points="250,30 468,388 32,388" stroke="#000000" strokeWidth="5" strokeLinejoin="round" fill="none" />
+
+    {/* 6. Solid Core Black Center Triangle */}
+    <polygon points="250,165 350,312 150,312" fill="#000000" stroke="url(#gold-primary)" strokeWidth="4" strokeLinejoin="round" />
+
+    {/* Decorative internal line */}
+    <polygon points="250,175 338,304 162,304" stroke="url(#gold-metal-light)" strokeWidth="1.2" fill="none" />
+  </g>
+</svg>
