@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Banner, StorePage, StoreSettings, formatBRL } from '../types';
-import { uploadToImgbb } from '../lib/upload';
-import { db } from '../firebase';
+import { uploadProductImage } from '../supabase';
+import { supabase, rowToCamel, objectToSnake } from '../supabase';
 import { INITIAL_PRODUCTS } from '../data/seed';
-import { collection, doc, setDoc, deleteDoc, updateDoc, onSnapshot, getDocs } from 'firebase/firestore';
+
 import { 
   Plus, Edit2, Trash2, Upload, Loader2, Sparkles, CheckCircle,
   PhoneCall, Activity, Image as ImageIcon, BarChart3, 
@@ -81,16 +81,13 @@ export default function AdminPanel({
   const [deletingAdminEmail, setDeletingAdminEmail] = useState<string | null>(null);
   const [isAdminsLoading, setIsAdminsLoading] = useState(false);
 
-  // Fetch admins list from Firestore
+  // Fetch admins list from Supabase
   const fetchAdmins = async () => {
     setIsAdminsLoading(true);
     try {
-      const qSnap = await getDocs(collection(db, 'admins'));
-      const list: any[] = [];
-      qSnap.forEach(d => {
-        list.push({ email: d.id, ...d.data() });
-      });
-      setAdminsList(list);
+      const { data, error } = await supabase.from('admins').select('*').order('added_at', { ascending: true });
+      if (error) throw error;
+      setAdminsList((data || []).map(rowToCamel));
     } catch (e) {
       console.error("Erro ao carregar administradores:", e);
       onShowNotification('error', 'Falha ao carregar lista de administradores.');
@@ -112,26 +109,28 @@ export default function AdminPanel({
       onShowNotification('error', 'Digite um e-mail válido.');
       return;
     }
-    onShowNotification('loading', 'Autorizando conta no Firebase...');
+    onShowNotification('loading', 'Autorizando conta no Supabase...');
     try {
-      await setDoc(doc(db, 'admins', email), {
+      const { error } = await supabase.from('admins').upsert({
         email,
         role: newAdminRole,
-        addedAt: new Date().toISOString()
+        added_at: new Date().toISOString()
       });
+      if (error) throw error;
       setNewAdminEmail('');
-      onShowNotification('success', 'Conta de administrador autorizada no Firebase!');
+      onShowNotification('success', 'Conta de administrador autorizada no Supabase!');
       fetchAdmins();
     } catch (err) {
       console.error("Erro ao adicionar admin:", err);
-      onShowNotification('error', 'Sem permissão para adicionar administradores no Firestore.');
+      onShowNotification('error', 'Sem permissão para adicionar administradores.');
     }
   };
 
   const handleDeleteAdmin = async (email: string) => {
     onShowNotification('loading', 'Revogando autorização...');
     try {
-      await deleteDoc(doc(db, 'admins', email));
+      const { error } = await supabase.from('admins').delete().eq('email', email);
+      if (error) throw error;
       onShowNotification('success', 'Autorização de administrador revogada.');
       fetchAdmins();
     } catch (err) {
@@ -179,25 +178,28 @@ export default function AdminPanel({
 
   // Sync state data in real-time
   useEffect(() => {
-    const unsubSettings = onSnapshot(doc(db, 'storeSettings', 'triarc_config'), (snap) => {
-      if (snap.exists()) {
-        setSettings(snap.data() as StoreSettings);
-      }
-    }, (err) => console.warn("SaaS settings listener pending: ", err));
+    const loadSettings = async () => {
+      const { data, error } = await supabase.from('store_settings').select('*').eq('id', 'main').maybeSingle();
+      if (error) { console.warn("SaaS settings listener pending: ", error); return; }
+      if (data) setSettings(rowToCamel<StoreSettings>(data));
+    };
+    const loadAnalytics = async () => {
+      const { data, error } = await supabase.from('analytics').select('visits, whatsapp_clicks').eq('id', 'main').maybeSingle();
+      if (error) { console.warn("Analytics listener pending: ", error); return; }
+      if (data) setAnalyticsData({ visits: data.visits || 0, whatsapp_clicks: data.whatsapp_clicks || 0 });
+    };
 
-    const unsubAnalytics = onSnapshot(doc(db, 'analytics', 'counters'), (snap) => {
-      if (snap.exists()) {
-        const d = snap.data();
-        setAnalyticsData({
-          visits: d?.visits || 0,
-          whatsapp_clicks: d?.whatsapp_clicks || 0
-        });
-      }
-    }, (err) => console.warn("Analytics listener pending: ", err));
+    loadSettings();
+    loadAnalytics();
+
+    const channel = supabase
+      .channel('admin-settings-analytics-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'store_settings' }, loadSettings)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'analytics' }, loadAnalytics)
+      .subscribe();
 
     return () => {
-      unsubSettings();
-      unsubAnalytics();
+      supabase.removeChannel(channel);
     };
   }, []);
 
@@ -215,7 +217,7 @@ export default function AdminPanel({
     onShowNotification('loading', "Transferindo imagem para armazenamento global...");
 
     try {
-      const url = await uploadToImgbb(file);
+      const url = await uploadProductImage(file);
       if (target === 'banner') {
         setBannerForm(prev => ({ ...prev, imageUrl: url }));
         onShowNotification('success', "Foto carregada no banner com sucesso!");
@@ -269,7 +271,6 @@ export default function AdminPanel({
     onShowNotification('loading', "Gravando slide publicitário...");
     try {
       const bId = isEditingBanner || "banner_" + Math.random().toString(36).substring(2, 9);
-      const bRef = doc(db, 'banners', bId);
 
       const payload = {
         id: bId,
@@ -283,7 +284,8 @@ export default function AdminPanel({
         createdAt: new Date().toISOString()
       };
 
-      await setDoc(bRef, payload);
+      const { error } = await supabase.from('banners').upsert(objectToSnake(payload));
+      if (error) throw error;
       onShowNotification('success', "Slide rotativo gravado com sucesso!");
       resetBannerForm();
       await onRefreshBanners();
@@ -295,9 +297,8 @@ export default function AdminPanel({
   const handleToggleBannerActive = async (bn: Banner) => {
     onShowNotification('loading', "Modificando visibilidade...");
     try {
-      await updateDoc(doc(db, 'banners', bn.id), {
-        isActive: !bn.isActive
-      });
+      const { error } = await supabase.from('banners').update({ is_active: !bn.isActive }).eq('id', bn.id);
+      if (error) throw error;
       onShowNotification('success', "Situação de exibição modificada.");
       await onRefreshBanners();
     } catch {
@@ -308,7 +309,8 @@ export default function AdminPanel({
   const handleDeleteBanner = async (id: string) => {
     onShowNotification('loading', "Retirando imagem do banco...");
     try {
-      await deleteDoc(doc(db, 'banners', id));
+      const { error } = await supabase.from('banners').delete().eq('id', id);
+      if (error) throw error;
       onShowNotification('success', "Banner rotativo deletado.");
       await onRefreshBanners();
     } catch (err: any) {
@@ -344,10 +346,11 @@ export default function AdminPanel({
       ];
 
       for (const b of defaults) {
-        await setDoc(doc(db, 'banners', b.id), {
+        const { error } = await supabase.from('banners').upsert(objectToSnake({
           ...b,
           createdAt: new Date().toISOString()
-        });
+        }));
+        if (error) throw error;
       }
       onShowNotification('success', "Banners padrões implantados!");
       await onRefreshBanners();
@@ -360,10 +363,11 @@ export default function AdminPanel({
     onShowNotification('loading', "Injetando produtos de elite no catálogo...");
     try {
       for (const p of INITIAL_PRODUCTS) {
-        await setDoc(doc(db, 'products', p.id), {
+        const { error } = await supabase.from('products').upsert(objectToSnake({
           ...p,
           updatedAt: new Date().toISOString()
-        });
+        }));
+        if (error) throw error;
       }
       onShowNotification('success', "Produtos padrões da TRIARC implantados com sucesso!");
       if (onRefreshProducts) {
@@ -437,7 +441,6 @@ export default function AdminPanel({
     onShowNotification('loading', "Salvando informações do produto no mostruário...");
     try {
       const pId = isEditingProduct || "triarc_prod_" + Math.random().toString(36).substring(2, 9);
-      const pRef = doc(db, 'products', pId);
 
       const sizesArr = productForm.sizes.split(',').map(s => s.trim()).filter(Boolean);
       const colorsArr = productForm.colors.split(',').map(c => c.trim()).filter(Boolean);
@@ -470,12 +473,13 @@ export default function AdminPanel({
         createdAt: isEditingProduct ? undefined : new Date().toISOString()
       };
 
-      // Clean up undefined properties for firestore safety
+      // Clean up undefined properties before sending
       const cleanPayload = Object.fromEntries(
         Object.entries(payload).filter(([_, v]) => v !== undefined)
       );
 
-      await setDoc(pRef, cleanPayload, { merge: true });
+      const { error } = await supabase.from('products').upsert(objectToSnake(cleanPayload));
+      if (error) throw error;
       onShowNotification('success', "Produto salvo e integrado com sucesso!");
       resetProductForm();
       if (onRefreshProducts) {
@@ -490,7 +494,8 @@ export default function AdminPanel({
   const handleDeleteProduct = async (id: string) => {
     onShowNotification('loading', "Deletando produto do estoque virtual...");
     try {
-      await deleteDoc(doc(db, 'products', id));
+      const { error } = await supabase.from('products').delete().eq('id', id);
+      if (error) throw error;
       onShowNotification('success', "Produto deletado com sucesso!");
       if (onRefreshProducts) {
         await onRefreshProducts();
@@ -509,7 +514,7 @@ export default function AdminPanel({
     onShowNotification('loading', "Enviando foto do produto para o servidor CDN...");
 
     try {
-      const url = await uploadToImgbb(file);
+      const url = await uploadProductImage(file);
       setProductForm(prev => ({ ...prev, imageUrl: url }));
       onShowNotification('success', "Foto do produto enviada com sucesso!");
     } catch {
@@ -527,7 +532,7 @@ export default function AdminPanel({
     onShowNotification('loading', "Enviando foto adicional para a galeria...");
 
     try {
-      const url = await uploadToImgbb(file);
+      const url = await uploadProductImage(file);
       setAdditionalImages(prev => [...prev, url]);
       onShowNotification('success', "Foto enviada e adicionada à galeria!");
     } catch {
@@ -570,7 +575,8 @@ export default function AdminPanel({
         showroomLayoutStyle: settings?.showroomLayoutStyle ?? 'grid'
       };
 
-      await setDoc(doc(db, 'storeSettings', 'triarc_config'), payload);
+      const { error } = await supabase.from('store_settings').upsert(objectToSnake({ ...payload, id: 'main' }));
+      if (error) throw error;
       onShowNotification('success', "Informações do site salvas em tempo real!");
     } catch (err: any) {
       console.error("Save settings error:", err);
@@ -599,11 +605,12 @@ export default function AdminPanel({
       
       const updatedPayload = {
         ...settings,
-        id: 'triarc_config',
+        id: 'main',
         customPages: updatedPages
       };
 
-      await setDoc(doc(db, 'storeSettings', 'triarc_config'), updatedPayload);
+      const { error } = await supabase.from('store_settings').upsert(objectToSnake(updatedPayload));
+      if (error) throw error;
       onShowNotification('success', `Página "${newPage.title}" anexada ao rodapé!`);
       setNewPageForm({ title: '', slug: '', content: '' });
     } catch {
@@ -616,9 +623,8 @@ export default function AdminPanel({
     onShowNotification('loading', "Removendo página...");
     try {
       const filtered = (settings.customPages || []).filter(p => p.id !== id);
-      await updateDoc(doc(db, 'storeSettings', 'triarc_config'), {
-        customPages: filtered
-      });
+      const { error } = await supabase.from('store_settings').update({ custom_pages: filtered }).eq('id', 'main');
+      if (error) throw error;
       onShowNotification('success', "Página removida.");
     } catch {
       onShowNotification('error', "Instabilidade ao remover.");

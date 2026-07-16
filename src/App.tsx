@@ -11,9 +11,7 @@ import { INITIAL_PRODUCTS } from './data/seed';
 import { Product, Order, Banner, StoreSettings, formatBRL } from './types';
 import TriarcLogo from './components/TriarcLogo';
 import AdminPanel from './components/AdminPanel';
-import { db, auth } from './firebase';
-import { collection, doc, onSnapshot, setDoc, increment, getDoc, getDocs, deleteDoc } from 'firebase/firestore';
-import { signInWithEmailAndPassword, signInAnonymously, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
+import { supabase, sendAdminMagicLink, checkIsAdmin, signOutAdmin, rowToCamel } from './supabase';
 
 const WhatsAppLogo = ({ className = "w-4 h-4" }: { className?: string }) => (
   <svg 
@@ -85,6 +83,7 @@ export default function App() {
   const [adminPasswordInput, setAdminPasswordInput] = useState('');
   const [adminLoginError, setAdminLoginError] = useState('');
   const [isFirstAccessMode, setIsFirstAccessMode] = useState(false);
+  const [isMagicLinkSent, setIsMagicLinkSent] = useState(false);
   const [adminNotification, setAdminNotification] = useState<{ type: 'success' | 'error' | 'info' | 'loading', text: string } | null>(null);
 
   const showAdminNotification = (type: 'success' | 'error' | 'info' | 'loading', text: string) => {
@@ -96,83 +95,78 @@ export default function App() {
 
   // Observar estado de autenticação para manter o admin logado
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        const email = user.email?.trim().toLowerCase();
-        if (email === 'gustavoncoimbra@gmail.com') {
-          setIsAdminLoggedIn(true);
-        } else if (email) {
-          try {
-            const adminDoc = await getDoc(doc(db, 'admins', email));
-            if (adminDoc.exists()) {
-              setIsAdminLoggedIn(true);
-            } else {
-              setIsAdminLoggedIn(false);
-            }
-          } catch (e) {
-            console.error("Erro ao verificar status de admin:", e);
-            setIsAdminLoggedIn(false);
-          }
-        } else {
-          setIsAdminLoggedIn(false);
+    const checkSession = async (email?: string | null) => {
+      if (email) {
+        const authorized = await checkIsAdmin(email);
+        setIsAdminLoggedIn(authorized);
+        if (authorized) {
+          setIsAdminPanelOpen(true);
+          setIsAdminLoginModalOpen(false);
         }
       } else {
         setIsAdminLoggedIn(false);
       }
+    };
+
+    supabase.auth.getSession().then(({ data }) => {
+      checkSession(data.session?.user?.email);
     });
-    return () => unsubscribe();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      checkSession(session?.user?.email);
+    });
+
+    return () => listener.subscription.unsubscribe();
   }, []);
 
-  // Synchronize Firestore collections
+  // Synchronize Supabase tables (initial fetch + realtime updates)
   useEffect(() => {
     setIsFirebaseLoading(true);
-    const unsubProducts = onSnapshot(collection(db, 'products'), (snap) => {
-      const list: Product[] = [];
-      snap.forEach(d => {
-        list.push({ id: d.id, ...d.data() } as Product);
-      });
-      setProducts(list.length > 0 ? list : INITIAL_PRODUCTS);
+
+    const loadProducts = async () => {
+      const { data, error } = await supabase.from('products').select('*');
+      if (error) { console.warn('Products sync pending: ', error); setProducts(INITIAL_PRODUCTS); }
+      else setProducts(data && data.length > 0 ? data.map(rowToCamel<Product>) : INITIAL_PRODUCTS);
       setIsFirebaseLoading(false);
-    }, (err) => {
-      console.warn("Products sync pending: ", err);
-      setProducts(INITIAL_PRODUCTS);
-      setIsFirebaseLoading(false);
-    });
+    };
+    const loadOrders = async () => {
+      const { data, error } = await supabase.from('orders').select('*');
+      if (error) console.warn('Orders error: ', error);
+      else setOrders((data || []).map(rowToCamel<Order>));
+    };
+    const loadBanners = async () => {
+      const { data, error } = await supabase.from('banners').select('*');
+      if (error) console.warn('Banners error: ', error);
+      else setBanners((data || []).map(rowToCamel<Banner>));
+    };
+    const loadSettings = async () => {
+      const { data, error } = await supabase.from('store_settings').select('*').eq('id', 'main').maybeSingle();
+      if (error) console.warn('Settings error: ', error);
+      else if (data) setSettings(rowToCamel<StoreSettings>(data));
+    };
+    const loadAnalytics = async () => {
+      const { data, error } = await supabase.from('analytics').select('visits, whatsapp_clicks').eq('id', 'main').maybeSingle();
+      if (error) console.warn('Analytics error: ', error);
+      else if (data) setAnalyticsCounters(data as { visits: number; whatsapp_clicks: number });
+    };
 
-    const unsubOrders = onSnapshot(collection(db, 'orders'), (snap) => {
-      const list: Order[] = [];
-      snap.forEach(d => {
-        list.push({ id: d.id, ...d.data() } as Order);
-      });
-      setOrders(list);
-    }, (err) => console.warn("Orders error: ", err));
+    loadProducts();
+    loadOrders();
+    loadBanners();
+    loadSettings();
+    loadAnalytics();
 
-    const unsubBanners = onSnapshot(collection(db, 'banners'), (snap) => {
-      const list: Banner[] = [];
-      snap.forEach(d => {
-        list.push({ id: d.id, ...d.data() } as Banner);
-      });
-      setBanners(list);
-    }, (err) => console.warn("Banners error: ", err));
-
-    const unsubSettings = onSnapshot(doc(db, 'storeSettings', 'triarc_config'), (snap) => {
-      if (snap.exists()) {
-        setSettings(snap.data() as StoreSettings);
-      }
-    }, (err) => console.warn("Settings error: ", err));
-
-    const unsubAnalytics = onSnapshot(doc(db, 'analytics', 'counters'), (snap) => {
-      if (snap.exists()) {
-        setAnalyticsCounters(snap.data() as { visits: number; whatsapp_clicks: number });
-      }
-    }, (err) => console.warn("Analytics error: ", err));
+    const channel = supabase
+      .channel('public-data-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, loadProducts)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, loadOrders)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'banners' }, loadBanners)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'store_settings' }, loadSettings)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'analytics' }, loadAnalytics)
+      .subscribe();
 
     return () => {
-      unsubProducts();
-      unsubOrders();
-      unsubBanners();
-      unsubSettings();
-      unsubAnalytics();
+      supabase.removeChannel(channel);
     };
   }, []);
 
@@ -183,8 +177,7 @@ export default function App() {
         const visitedFlag = sessionStorage.getItem('triarc_analytics_visited');
         if (!visitedFlag) {
           sessionStorage.setItem('triarc_analytics_visited', 'true');
-          const countersRef = doc(db, 'analytics', 'counters');
-          await setDoc(countersRef, { visits: increment(1) }, { merge: true });
+          await supabase.rpc('increment_visits');
         }
       } catch (e) {
         console.warn("Visits counting pending:", e);
@@ -195,8 +188,7 @@ export default function App() {
 
   const trackWhatsAppClick = async () => {
     try {
-      const countersRef = doc(db, 'analytics', 'counters');
-      await setDoc(countersRef, { whatsapp_clicks: increment(1) }, { merge: true });
+      await supabase.rpc('increment_whatsapp_clicks');
     } catch (e) {
       console.warn("WhatsApp action analytic registry pending:", e);
     }
@@ -1921,7 +1913,7 @@ export default function App() {
               <button
                 onClick={async () => {
                   try {
-                    await signOut(auth);
+                    await signOutAdmin();
                   } catch (e) {
                     console.error("Erro ao fazer logout:", e);
                   }
@@ -1981,12 +1973,12 @@ export default function App() {
                   <Key className="w-5 h-5 animate-pulse" />
                 </div>
                 <h3 className="font-serif text-xl font-bold text-stone-105 uppercase tracking-wide">
-                  {isFirstAccessMode ? "Criar Chave Adm" : "Console Adm"}
+                  Console Adm
                 </h3>
                 <p className="text-[11px] text-stone-400 font-sans leading-relaxed">
-                  {isFirstAccessMode 
-                    ? "Cadastre sua senha de acesso (mínimo 6 caracteres) se o seu e-mail já foi autorizado pelo proprietário."
-                    : "Painel corporativo restrito para o administrador."}
+                  {isMagicLinkSent
+                    ? "Enviamos um link de acesso para o seu e-mail. Abra a caixa de entrada e clique nele para entrar."
+                    : "Painel corporativo restrito para o administrador. Informe seu e-mail autorizado para receber o link de acesso."}
                 </p>
               </div>
 
@@ -1997,210 +1989,74 @@ export default function App() {
                 </div>
               )}
 
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                setAdminLoginError('');
-                
-                const trimmedEmail = adminEmailInput.trim().toLowerCase();
-                const trimmedPassword = adminPasswordInput.trim();
-                
-                if (!trimmedEmail) {
-                  setAdminLoginError('Por favor diga seu e-mail corporativo.');
-                  return;
-                }
-                if (!trimmedPassword || trimmedPassword.length < 6) {
-                  setAdminLoginError('A senha do painel corporativo deve ter pelo menos 6 caracteres.');
-                  return;
-                }
-                
-                if (isFirstAccessMode) {
-                  showAdminNotification('loading', 'Verificando autorização do e-mail no Firestore...');
-                  try {
-                    let isAuthorized = false;
-                    if (trimmedEmail === 'gustavoncoimbra@gmail.com') {
-                      isAuthorized = true;
-                    } else {
-                      const adminDoc = await getDoc(doc(db, 'admins', trimmedEmail));
-                      if (adminDoc.exists()) {
-                        isAuthorized = true;
-                      }
-                    }
-
-                    if (!isAuthorized) {
-                      setAdminLoginError('Este e-mail corporativo não está autorizado. Solicite permissão ao administrador principal.');
-                      showAdminNotification('error', 'Acesso negado: Não autorizado.');
-                      return;
-                    }
-
-                    showAdminNotification('loading', 'Registrando conta e chave de acesso no Firebase...');
-                    try {
-                      await createUserWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
-                      setIsAdminLoggedIn(true);
-                      setIsAdminLoginModalOpen(false);
-                      setIsAdminPanelOpen(true);
-                      setAdminEmailInput('');
-                      setAdminPasswordInput('');
-                      setIsFirstAccessMode(false);
-                      showAdminNotification('success', 'Nova conta registrada e logada com sucesso!');
-                    } catch (createErr: any) {
-                      if (createErr.code === 'auth/email-already-in-use') {
-                        // Se já existir, tentar fazer login diretamente
-                        try {
-                          await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
-                          setIsAdminLoggedIn(true);
-                          setIsAdminLoginModalOpen(false);
-                          setIsAdminPanelOpen(true);
-                          setAdminEmailInput('');
-                          setAdminPasswordInput('');
-                          setIsFirstAccessMode(false);
-                          showAdminNotification('success', 'Acesso de administrador autorizado!');
-                        } catch (loginErr: any) {
-                          setAdminLoginError('Esta conta já está cadastrada. Se esqueceu sua chave, contate o administrador ou faça o login comum.');
-                          showAdminNotification('error', 'Erro ao conectar conta existente.');
-                        }
-                      } else {
-                        setAdminLoginError(`Erro de registro no Firebase: ${createErr.message}`);
-                        showAdminNotification('error', 'Falha no registro.');
-                      }
-                    }
-                  } catch (err: any) {
-                    console.error("Erro na verificação de administrador:", err);
-                    setAdminLoginError('Erro ao consultar as permissões no Firestore.');
-                    showAdminNotification('error', 'Erro de conexão.');
-                  }
-                } else {
-                  showAdminNotification('loading', 'Autenticando credenciais no Firebase...');
-                  try {
-                    // Tenta fazer o login com e-mail e senha no Firebase Auth diretamente
-                    const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
-                    const user = userCredential.user;
-                    
-                    // Verificar se o e-mail está autorizado no Firestore ou se é o gustavoncoimbra@gmail.com
-                    const email = user.email?.trim().toLowerCase();
-                    let isAuthorized = false;
-                    
-                    if (email === 'gustavoncoimbra@gmail.com') {
-                      isAuthorized = true;
-                    } else if (email) {
-                      const adminDoc = await getDoc(doc(db, 'admins', email));
-                      if (adminDoc.exists()) {
-                        isAuthorized = true;
-                      }
-                    }
-                    
-                    if (isAuthorized) {
-                      setIsAdminLoggedIn(true);
-                      setIsAdminLoginModalOpen(false);
-                      setIsAdminPanelOpen(true);
-                      setAdminEmailInput('');
-                      setAdminPasswordInput('');
-                      showAdminNotification('success', 'Acesso de administrador autorizado!');
-                    } else {
-                      // Não está autorizado! Deslogamos o usuário do Auth para manter segurança
-                      await signOut(auth);
-                      setIsAdminLoggedIn(false);
-                      setAdminLoginError('Esta conta do Firebase está autenticada, mas não está autorizada como administrador. Contate o suporte.');
-                      showAdminNotification('error', 'Acesso negado: Conta não autorizada.');
-                    }
-                  } catch (authErr: any) {
-                    console.warn("Falha ao autenticar administrador:", authErr);
-                    
-                    // Se o erro for que a credencial é inválida, mas é o super usuário e o Firebase está indisponível/sem internet, ou conta não existe no Firebase ainda:
-                    if (trimmedEmail === 'gustavoncoimbra@gmail.com' && trimmedPassword === 'triarc202602012211') {
-                      // Tenta criar a conta para o superadmin se não existir no Firebase
-                      if (authErr.code === 'auth/user-not-found' || authErr.code === 'auth/invalid-credential' || authErr.code === 'auth/invalid-email') {
-                        try {
-                          showAdminNotification('info', 'Registrando credenciais do superadmin no Firebase...');
-                          await createUserWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
-                          setIsAdminLoggedIn(true);
-                          setIsAdminLoginModalOpen(false);
-                          setIsAdminPanelOpen(true);
-                          setAdminEmailInput('');
-                          setAdminPasswordInput('');
-                          showAdminNotification('success', 'Superadmin registrado e conectado!');
-                        } catch (createErr: any) {
-                          console.error("Falha ao registrar superadmin:", createErr);
-                          // Fallback local
-                          setIsAdminLoggedIn(true);
-                          setIsAdminLoginModalOpen(false);
-                          setIsAdminPanelOpen(true);
-                          setAdminEmailInput('');
-                          setAdminPasswordInput('');
-                          showAdminNotification('success', 'Acesso autorizado localmente.');
-                        }
-                      } else {
-                        // Fallback local
-                        setIsAdminLoggedIn(true);
-                        setIsAdminLoginModalOpen(false);
-                        setIsAdminPanelOpen(true);
-                        setAdminEmailInput('');
-                        setAdminPasswordInput('');
-                        showAdminNotification('success', 'Acesso autorizado localmente (Offline).');
-                      }
-                    } else {
-                      // Erro comum de senha incorreta ou usuário não encontrado
-                      if (authErr.code === 'auth/user-not-found' || authErr.code === 'auth/invalid-credential') {
-                        setAdminLoginError('Usuário ou senha incorretos no Firebase Authentication.');
-                      } else {
-                        setAdminLoginError(`Falha de autenticação: ${authErr.message || authErr.code}`);
-                      }
-                      showAdminNotification('error', 'Credenciais inválidas.');
-                    }
-                  }
-                }
-              }} className="space-y-4 text-left">
-                <div className="space-y-1">
-                  <label className="font-mono text-[9px] text-stone-500 uppercase font-black">E-mail Corporativo</label>
-                  <input 
-                    type="email"
-                    value={adminEmailInput}
-                    onChange={(e) => setAdminEmailInput(e.target.value)}
-                    placeholder="admin@triarc.com"
-                    className="w-full rounded-lg border border-stone-850 bg-stone-950 px-3.5 py-2.5 text-stone-100 placeholder-stone-700 outline-none focus:border-amber-400 text-xs font-sans"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-mono text-[9px] text-stone-500 uppercase font-black">
-                    {isFirstAccessMode ? "Cadastrar Nova Senha" : "Chave Corporativa (Senha)"}
-                  </label>
-                  <input 
-                    type="password"
-                    value={adminPasswordInput}
-                    onChange={(e) => setAdminPasswordInput(e.target.value)}
-                    placeholder={isFirstAccessMode ? "Escolha uma senha para seus acessos futuros..." : "Sua senha secreta de customização..."}
-                    className="w-full rounded-lg border border-stone-850 bg-stone-950 px-3.5 py-2.5 text-stone-100 placeholder-stone-700 outline-none focus:border-amber-400 text-xs font-sans"
-                    required
-                  />
-                </div>
-
-                <div className="rounded-lg border border-stone-900 bg-stone-950/50 p-3 text-[10px] text-stone-500 font-sans leading-relaxed">
-                  🔒 <strong>Acesso Seguro:</strong> {isFirstAccessMode 
-                    ? "Sua senha é privada. Após cadastrar, use esta mesma senha para fazer o login nos seus próximos acessos."
-                    : "Use seu e-mail cadastrado e sua chave privada exclusiva de administrador para acessar o painel de controle."}
-                </div>
-
-                <button 
-                  type="submit"
-                  className="w-full py-3 bg-gradient-to-r from-amber-500 via-[#d4af37] to-amber-300 hover:brightness-110 text-black font-mono text-xs font-black tracking-widest uppercase rounded-xl transition cursor-pointer shadow-[0_10px_20px_rgba(212,175,55,0.15)]"
-                >
-                  {isFirstAccessMode ? "REGISTRAR E ACESSAR CONSOLE" : "AUTENTICAR E ACESSAR CONSOLE"}
-                </button>
-
-                <div className="text-center pt-2">
+              {isMagicLinkSent ? (
+                <div className="space-y-4 text-left">
+                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-[11px] text-emerald-400 font-sans">
+                    ✅ Link enviado para <strong>{adminEmailInput}</strong>. Pode fechar esta janela.
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
-                      setIsFirstAccessMode(!isFirstAccessMode);
-                      setAdminLoginError('');
+                      setIsMagicLinkSent(false);
+                      setAdminEmailInput('');
                     }}
-                    className="text-[11px] font-mono text-amber-400 hover:text-amber-300 hover:underline cursor-pointer transition uppercase tracking-wider bg-transparent border-0 outline-none"
+                    className="w-full py-3 border border-stone-800 hover:border-amber-400 text-stone-300 hover:text-amber-400 font-mono text-xs font-black tracking-widest uppercase rounded-xl transition cursor-pointer"
                   >
-                    {isFirstAccessMode ? "Já possui senha? Fazer Login" : "Primeiro Acesso? Cadastrar Senha"}
+                    Usar outro e-mail
                   </button>
                 </div>
-              </form>
+              ) : (
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  setAdminLoginError('');
+
+                  const trimmedEmail = adminEmailInput.trim().toLowerCase();
+                  if (!trimmedEmail) {
+                    setAdminLoginError('Por favor diga seu e-mail corporativo.');
+                    return;
+                  }
+
+                  showAdminNotification('loading', 'Verificando autorização e enviando link...');
+                  try {
+                    const authorized = await checkIsAdmin(trimmedEmail);
+                    if (!authorized) {
+                      setAdminLoginError('Este e-mail não está autorizado como administrador. Solicite permissão ao administrador principal.');
+                      showAdminNotification('error', 'Acesso negado: Não autorizado.');
+                      return;
+                    }
+                    await sendAdminMagicLink(trimmedEmail);
+                    setIsMagicLinkSent(true);
+                    showAdminNotification('success', 'Link enviado! Confira seu e-mail.');
+                  } catch (err: any) {
+                    console.error('Erro ao enviar link mágico:', err);
+                    setAdminLoginError(`Falha ao enviar o link: ${err.message || err}`);
+                    showAdminNotification('error', 'Erro ao enviar link.');
+                  }
+                }} className="space-y-4 text-left">
+                  <div className="space-y-1">
+                    <label className="font-mono text-[9px] text-stone-500 uppercase font-black">E-mail Corporativo</label>
+                    <input
+                      type="email"
+                      value={adminEmailInput}
+                      onChange={(e) => setAdminEmailInput(e.target.value)}
+                      placeholder="admin@triarc.com"
+                      className="w-full rounded-lg border border-stone-850 bg-stone-950 px-3.5 py-2.5 text-stone-100 placeholder-stone-700 outline-none focus:border-amber-400 text-xs font-sans"
+                      required
+                    />
+                  </div>
+
+                  <div className="rounded-lg border border-stone-900 bg-stone-950/50 p-3 text-[10px] text-stone-500 font-sans leading-relaxed">
+                    🔒 <strong>Acesso Seguro:</strong> Sem senha. Você recebe um link único e temporário por e-mail para entrar no painel.
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-3 bg-gradient-to-r from-amber-500 via-[#d4af37] to-amber-300 hover:brightness-110 text-black font-mono text-xs font-black tracking-widest uppercase rounded-xl transition cursor-pointer shadow-[0_10px_20px_rgba(212,175,55,0.15)]"
+                  >
+                    ENVIAR LINK DE ACESSO
+                  </button>
+                </form>
+              )}
             </motion.div>
           </div>
         )}
